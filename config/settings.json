@@ -1,0 +1,68 @@
+{
+    "assistant_name": "Victor",
+    "operator_name": "Vishnu",
+    "language_mode": "auto",
+    "power_mode": "low_power",
+    "ollama": {
+        "host": "http://localhost:11434",
+        "chat_endpoint": "/api/chat",
+        "tags_endpoint": "/api/tags",
+        "model": "qwen3.5:9b",
+        "temperature": 0.7,
+        "max_context_turns": 15
+    },
+    "voice": {
+        "wake_word": "Victor",
+        "wake_word_enabled": true,
+        "wake_word_sensitivity": 0.5,
+        "mic_index": null,
+        "sample_rate": 16000,
+        "stt_model": "small",
+        "stt_device": "cpu",
+        "stt_compute_type": "int8",
+        "lazy_load_stt": true,
+        "speech_threshold": 0.012,
+        "silence_duration": 1.0,
+        "min_speech_duration": 0.5,
+        "max_record_seconds": 30.0,
+        "noise_adaptation": true,
+        "tts_voice": "david",
+        "tts_rate": 170,
+        "tts_volume": 1.0,
+        "audio_feedback": true
+    },
+    "ui": {
+        "fullscreen": false,
+        "power_mode": "low_power",
+        "fps_limit": 30,
+        "bg_video_enabled": false,
+        "bg_video_fps": 18,
+        "hud_glow_intensity": 0.8,
+        "sound_effects": true
+    },
+    "telemetry": {
+        "interval_low_power": 3.5,
+        "interval_balanced": 2.0,
+        "interval_performance": 1.0
+    },
+    "security": {
+        "require_confirmation_for_destructive": true,
+        "allowed_applications": [
+            "code",
+            "cursor",
+            "chrome",
+            "brave",
+            "msedge",
+            "notepad",
+            "calc",
+            "cmd",
+            "powershell",
+            "wt",
+            "taskmgr",
+            "explorer",
+            "spotify",
+            "discord"
+        ],
+        "allowed_scripts_dir": "C:\\VICTOR\\scripts"
+    }
+}
