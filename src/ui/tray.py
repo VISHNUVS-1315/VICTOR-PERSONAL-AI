@@ -60,7 +60,17 @@ STATE_COLORS = {
 def configure_logging(verbose: bool = False) -> None:
     """File logging survives pythonw.exe, where there is no console."""
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+
+    class _LineBufferedRotatingFileHandler(RotatingFileHandler):
+        """Flush every record so `Open log` in the tray menu is never stale."""
+
+        def _open(self):
+            return open(
+                self.baseFilename, self.mode, encoding=self.encoding,
+                errors=self.errors, buffering=1,
+            )
+
+    handler = _LineBufferedRotatingFileHandler(
         LOGS_DIR / "tray.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
     )
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
