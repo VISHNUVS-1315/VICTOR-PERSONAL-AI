@@ -6,9 +6,11 @@ audio feedback chime, and event dispatching.
 """
 
 import os
+import logging
 import threading
 import time
 from collections import deque
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -29,6 +31,28 @@ from src.core.state import state_manager, SystemState
 VICTOR_MODEL_PATH = DATA_DIR / "models" / "victor.onnx"
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 1280  # 80ms chunk for openWakeWord
+
+
+def _make_logger() -> logging.Logger:
+    log = logging.getLogger("victor.wake")
+    if log.handlers:
+        return log
+    log.setLevel(logging.INFO)
+    try:
+        logs_dir = Path(__file__).resolve().parents[2] / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        handler: logging.Handler = RotatingFileHandler(
+            logs_dir / "wake.log", maxBytes=256_000, backupCount=2, encoding="utf-8"
+        )
+    except Exception:                                  # pragma: no cover
+        handler = logging.NullHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    log.addHandler(handler)
+    log.propagate = False
+    return log
+
+
+log = _make_logger()
 
 
 class WakeWordListener:
@@ -85,11 +109,16 @@ class WakeWordListener:
         """Simulate wake word trigger manually (e.g. from UI button)."""
         self._on_wake_trigger("manual")
 
-    def _on_wake_trigger(self, source: str = "acoustic"):
+    def _on_wake_trigger(self, source: str = "acoustic", score: Optional[float] = None):
         now = time.time()
         if now - self._last_trigger_time < self._cooldown_seconds:
             return
         self._last_trigger_time = now
+        log.info(
+            "trigger source=%s score=%s",
+            source,
+            f"{score:.3f}" if score is not None else "n/a",
+        )
 
         # Immediately pause wake-word listener to yield microphone to STT
         self.pause()
@@ -139,10 +168,15 @@ class WakeWordListener:
 
         print(f"[+] Victor is listening for 'Victor' in background (Threshold: {self.sensitivity})...")
 
-        # ONNX buffers start zero-padded, which produces one loud false peak in the
-        # first frames. Feed audio through untouched, then reset the feature buffers.
+        # ONNX buffers start zero-padded, which produces a loud false peak in the
+        # first frames. Feed ~2 s of real audio through, reset, then ignore
+        # another ~1 s while the feature buffers refill. Without this second
+        # window the HUD wakes itself up a few seconds after every launch.
         warmup_frames = max(1, int(2.0 * SAMPLE_RATE / BLOCK_SIZE))  # ~2 s
+        settle_frames = max(1, int(1.0 * SAMPLE_RATE / BLOCK_SIZE))  # ~1 s
         frames_seen = 0
+        settling = False
+        settle_seen = 0
 
         try:
             with sd.InputStream(
@@ -178,7 +212,23 @@ class WakeWordListener:
                                 self._model.reset()
                             except Exception:
                                 pass
-                            print("[+] Wake-word warm-up complete. Listening...")
+                            self._recent_scores.clear()
+                            settling = True
+                            settle_seen = 0
+                            print("[+] Wake-word warm-up complete. Settling...")
+                        continue
+
+                    # Post-reset settling window: buffers are refilling, ignore scores
+                    if settling:
+                        settle_seen += 1
+                        try:
+                            self._model.predict(audio)
+                        except Exception:
+                            pass
+                        if settle_seen >= settle_frames:
+                            settling = False
+                            self._recent_scores.clear()
+                            print("[+] Wake-word listening for 'Victor'.")
                         continue
 
                     # Predict wake word score.
@@ -196,7 +246,7 @@ class WakeWordListener:
                         if score >= self.sensitivity and supporting >= self._confirm_frames:
                             print(f"\n[+] WAKE WORD DETECTED: 'Victor' (Score: {score:.3f})")
                             self._recent_scores.clear()
-                            self._on_wake_trigger("model")
+                            self._on_wake_trigger("model", score)
                     except Exception as pred_err:
                         # Reset preprocessor buffers on glitch
                         time.sleep(0.05)
