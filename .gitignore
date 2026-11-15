@@ -38,3 +38,8 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# Local backups and generated screenshots
+backups/
+data/hud_shots/
+data/screenshots/

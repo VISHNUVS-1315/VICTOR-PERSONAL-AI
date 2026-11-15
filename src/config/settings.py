@@ -33,7 +33,7 @@ DEFAULT_SETTINGS = {
     "voice": {
         "wake_word": "Victor",
         "wake_word_enabled": True,
-        "wake_word_sensitivity": 0.7,
+        "wake_word_sensitivity": 0.85,
         "mic_index": None,  # None means system default
         "sample_rate": 16000,
         "stt_model": "small",
@@ -48,7 +48,9 @@ DEFAULT_SETTINGS = {
         "tts_voice": "david",  # david or zira
         "tts_rate": 170,
         "tts_volume": 1.0,
-        "audio_feedback": True
+        "audio_feedback": False,  # no chimes or notification sounds - voice only
+        "listen_timeout": 8.0,    # seconds to wait for speech before ending a turn
+        "idle_unload_seconds": 300  # release Whisper from RAM after this much silence
     },
     "ui": {
         "fullscreen": False,
@@ -57,7 +59,8 @@ DEFAULT_SETTINGS = {
         "bg_video_enabled": False,
         "bg_video_fps": 18,
         "hud_glow_intensity": 0.8,
-        "sound_effects": True
+        "sound_effects": False,
+        "hud_auto_hide_seconds": 30  # 0 keeps the HUD on screen permanently
     },
     "telemetry": {
         "interval_low_power": 3.5,

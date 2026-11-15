@@ -10,6 +10,7 @@ Includes:
 - Lazy loading and idle memory management
 """
 
+import os
 import threading
 import time
 from collections import deque
@@ -39,12 +40,24 @@ class SpeechRecognizer:
         self.silence_endpoint_duration = float(settings.get("voice.silence_duration", 1.0))
         self.min_speech_duration = float(settings.get("voice.min_speech_duration", 0.5))
         self.max_record_seconds = float(settings.get("voice.max_record_seconds", 30.0))
-        self.max_wait_seconds = 10.0
+        self.max_wait_seconds = float(settings.get("voice.listen_timeout", 8.0))
 
         # Model settings
         self.model_name = settings.get("voice.stt_model", "small")
         self.device = settings.get("voice.stt_device", "cpu")
         self.compute_type = settings.get("voice.stt_compute_type", "int8")
+
+        # CTranslate2 threads. Setting this explicitly matters: when the process
+        # sets OMP_NUM_THREADS=1 (to keep numpy/MKL quiet while idle),
+        # cpu_threads=0 would inherit 1 thread and make transcription ~2.5x
+        # slower. Six threads keeps turns responsive and leaves headroom for
+        # Ollama and the UI on a 10-core laptop.
+        configured = int(settings.get("voice.stt_cpu_threads", 0) or 0)
+        self.cpu_threads = configured if configured > 0 else max(2, min(6, (os.cpu_count() or 4) - 4))
+
+        # Remember the language the user actually speaks so auto mode does not
+        # pay for language detection on every single turn.
+        self._session_language: Optional[str] = None
 
     def _ensure_model_loaded(self):
         with self._lock:
@@ -53,10 +66,16 @@ class SpeechRecognizer:
                 self._model = WhisperModel(
                     self.model_name,
                     device=self.device,
-                    compute_type=self.compute_type
+                    compute_type=self.compute_type,
+                    cpu_threads=self.cpu_threads,
+                    num_workers=1,
                 )
                 print("[+] Faster-Whisper speech recognizer ready.")
             self._last_used_time = time.time()
+
+    def reset_language_hint(self):
+        """Forget the cached language (used when the user changes language mode)."""
+        self._session_language = None
 
     def unload_model(self):
         """Release Whisper model from memory during low-power standby."""
@@ -65,6 +84,46 @@ class SpeechRecognizer:
                 self._model = None
                 print("[+] Faster-Whisper model unloaded from RAM.")
 
+    def is_model_loaded(self) -> bool:
+        return self._model is not None
+
+    def _decode(self, audio: "np.ndarray", language: Optional[str]) -> Tuple[str, str]:
+        """Transcribe float32 16 kHz audio with conversation-friendly settings.
+
+        ``without_timestamps`` and ``temperature=0`` remove work the voice
+        assistant never uses and make latency predictable. The detected language
+        is cached so auto mode only pays for detection once per session.
+        """
+        self._ensure_model_loaded()
+        requested = language
+        effective = requested or self._session_language
+        segments, info = self._model.transcribe(
+            audio,
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=400),
+            language=effective,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            without_timestamps=True,
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        detected = info.language or "en"
+        if text and requested is None:
+            self._session_language = detected
+        return text, detected
+
+    def transcribe_file(self, path: str, language: Optional[str] = None) -> Tuple[str, str]:
+        """Transcribe a 16 kHz mono WAV file. Used by tests and diagnostics."""
+        import wave
+
+        with wave.open(path, "rb") as wf:
+            if wf.getframerate() != SAMPLE_RATE:
+                raise ValueError(f"Expected {SAMPLE_RATE} Hz audio, got {wf.getframerate()} Hz")
+            raw = wf.readframes(wf.getnframes())
+        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        return self._decode(audio, language)
+
     def cancel(self):
         """Cancel ongoing audio capture."""
         self._stop_requested = True
@@ -72,11 +131,14 @@ class SpeechRecognizer:
     def listen_and_transcribe(
         self,
         energy_callback: Optional[Callable[[float], None]] = None,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        on_transcribe: Optional[Callable[[], None]] = None
     ) -> Tuple[str, str]:
         """
         Record voice patiently until sentence is complete.
         Returns: (transcribed_text, detected_language)
+        ``on_transcribe`` fires once recording has finished and decoding starts,
+        so the UI can show a processing state during recognition.
         """
         self._ensure_model_loaded()
         self._is_listening = True
@@ -206,17 +268,13 @@ class SpeechRecognizer:
 
         # Transcribe with Faster-Whisper
         print(f"[*] Transcribing {duration_sec:.1f}s of speech with Faster-Whisper...")
+        if on_transcribe:
+            try:
+                on_transcribe()
+            except Exception:
+                pass
         try:
-            segments, info = self._model.transcribe(
-                audio,
-                beam_size=5,
-                vad_filter=True,  # Filter out silence at beginning and end
-                vad_parameters=dict(min_silence_duration_ms=400),
-                language=language
-            )
-
-            text = " ".join(seg.text.strip() for seg in segments).strip()
-            detected_lang = info.language or "en"
+            text, detected_lang = self._decode(audio, language)
 
             # Check if empty
             if not text:

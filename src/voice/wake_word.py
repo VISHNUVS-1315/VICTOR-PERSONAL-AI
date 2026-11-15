@@ -8,6 +8,7 @@ audio feedback chime, and event dispatching.
 import os
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -46,7 +47,13 @@ class WakeWordListener:
         
         # False-trigger prevention cooldown
         self._last_trigger_time = 0.0
-        self._cooldown_seconds = 2.0
+        self._cooldown_seconds = 3.0
+
+        # A single 80 ms frame above threshold is not enough: the word has to
+        # show up as a short energy peak. This killed ambient-noise false wakes
+        # without affecting real detections, which run 0.95+ for several frames.
+        self._recent_scores = deque(maxlen=12)
+        self._confirm_frames = 2
         
         # Audio device selection
         self.mic_index = settings.get("voice.mic_index", None)
@@ -182,8 +189,13 @@ class WakeWordListener:
                         prediction = self._model.predict(audio)
                         score = prediction.get("victor", 0.0)
 
-                        if score >= self.sensitivity:
+                        self._recent_scores.append(float(score))
+                        supporting = sum(
+                            1 for s in self._recent_scores if s >= self.sensitivity * 0.55
+                        )
+                        if score >= self.sensitivity and supporting >= self._confirm_frames:
                             print(f"\n[+] WAKE WORD DETECTED: 'Victor' (Score: {score:.3f})")
+                            self._recent_scores.clear()
                             self._on_wake_trigger("model")
                     except Exception as pred_err:
                         # Reset preprocessor buffers on glitch

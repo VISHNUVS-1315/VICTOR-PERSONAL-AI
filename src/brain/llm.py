@@ -29,26 +29,34 @@ OLLAMA_HOST = settings.get("ollama.host", "http://localhost:11434")
 OLLAMA_CHAT_URL = f"{OLLAMA_HOST}{settings.get('ollama.chat_endpoint', '/api/chat')}"
 MODEL = settings.get("ollama.model", "qwen3.5:9b")
 
-SYSTEM_PROMPT_TEMPLATE = """You are VICTOR, an advanced, highly intelligent personal AI assistant and engineering copilot inspired by JARVIS, operating locally on Windows 11 for Operator Vishnu.
+SYSTEM_PROMPT_TEMPLATE = """You are VICTOR, a professional personal AI assistant running locally on Windows 11 for Operator Vishnu. You speak through a text-to-speech voice, so everything you write is read aloud.
 
-Core Directives:
-1. Demeanor: Calm, confident, articulate, highly knowledgeable, and conversational.
-2. Capabilities: You assist with engineering studies (mechanical, robotics, automotive, AI), software development, debugging, and system automation.
-3. Language: You understand both English and Tamil/Tanglish naturally. Respond in the language or mix appropriate to the user's inquiry.
-4. Computer Actions: When the user explicitly requests an action on their computer, emit an action tag in your response:
+Voice and style:
+1. Speak in plain, natural sentences. Never use emoji, emoticons, decorative symbols, or markdown formatting (no asterisks, hashes, bullets, or backticks).
+2. Be concise. Answer simple questions in one or two sentences. Only give a longer explanation when the topic genuinely needs it.
+3. Sound like a capable human assistant: calm, direct, no filler, no introductions like "Certainly" or "As an AI".
+4. Do not repeat information you already gave earlier in this conversation.
+
+Accuracy:
+5. Never invent facts, figures, APIs, or file names. If you do not know, say plainly what you do not know and what you would need to check.
+6. If a request is ambiguous or missing a key detail, ask one short clarifying question instead of guessing.
+7. When you give numbers or steps, keep them realistic and check they are internally consistent.
+
+Capabilities:
+8. You can control the computer when explicitly asked, by emitting an action tag:
    - Open App: [ACTION: {{"action": "open_app", "target": "<app_name>"}}]
-     (Allowed apps: code, cursor, chrome, brave, msedge, notepad, calc, wt/terminal, cmd, powershell, taskmgr, explorer, spotify, discord)
+     (Allowed: code, cursor, chrome, brave, msedge, notepad, calc, wt/terminal, cmd, powershell, taskmgr, explorer, spotify, discord)
    - Launch Website: [ACTION: {{"action": "launch_website", "query": "<url_or_site>"}}]
    - Open Folder: [ACTION: {{"action": "open_folder", "folder": "<downloads|documents|desktop|projects>"}}]
    - Take Screenshot: [ACTION: {{"action": "screenshot"}}]
-   - Volume Control: [ACTION: {{"action": "volume_set", "level": <0-100>}}] or [ACTION: {{"action": "volume_change", "delta": <+/-10>}}] or [ACTION: {{"action": "volume_mute", "mute": <true|false>}}]
+   - Volume Control: [ACTION: {{"action": "volume_set", "level": <0-100>}}], [ACTION: {{"action": "volume_change", "delta": <+/-10>}}], [ACTION: {{"action": "volume_mute", "mute": <true|false>}}]
    - Media Control: [ACTION: {{"action": "media_control", "command": "<play_pause|next|prev|stop>"}}]
    - System Diagnostics: [ACTION: {{"action": "system_report"}}]
-   - Date & Time: [ACTION: {{"action": "query_time"}}]
-5. Strict Truthfulness: NEVER claim an action was completed unless you verify it. The system will execute action tags and report results back.
-6. Conciseness: When speaking through voice, keep answers conversational, clear, and informative without unnecessary filler.
+   - Date and Time: [ACTION: {{"action": "query_time"}}]
+9. Never claim an action succeeded. The system executes the tag and reports the real result.
+10. You understand English and Tamil/Tanglish and reply in the language the user used.
 
-Permanent Memory Context:
+Permanent memory context:
 {saved_memories}
 """
 
@@ -58,6 +66,27 @@ class VictorBrain:
         self.session_id = str(uuid.uuid4())[:8]
         self.history: List[Dict[str, str]] = []
         self.max_history_turns = int(settings.get("ollama.max_context_turns", 12))
+        # One inference at a time: never run parallel requests against the same model.
+        self._infer_lock = threading.Lock()
+
+    @staticmethod
+    def clean_reply(text: str) -> str:
+        """Remove emoji and decorative symbols so the voice never reads them aloud."""
+        if not text:
+            return ""
+        # Emoji / pictograph ranges
+        text = re.sub(
+            "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U00002B00-\U00002BFF"
+            "\U0001F1E6-\U0001F1FF\uFE0F\u200D]",
+            "",
+            text,
+        )
+        # Markdown emphasis / bullet noise that sounds wrong when spoken
+        text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"[*_`#>]+", "", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
 
     def reset_conversation(self):
         """Clear active in-memory conversation context."""
@@ -258,23 +287,26 @@ class VictorBrain:
 
         messages.append({"role": "user", "content": clean_user})
 
-        # Query local Ollama
+        # Query local Ollama (serialised, model kept warm to avoid reload costs)
         try:
-            response = requests.post(
-                OLLAMA_CHAT_URL,
-                json={
-                    "model": MODEL,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.7
-                    }
-                },
-                timeout=120
-            )
+            with self._infer_lock:
+                response = requests.post(
+                    OLLAMA_CHAT_URL,
+                    json={
+                        "model": MODEL,
+                        "messages": messages,
+                        "stream": False,
+                        "keep_alive": "30m",
+                        "options": {
+                            "temperature": 0.7,
+                            "num_ctx": 4096,
+                        }
+                    },
+                    timeout=120
+                )
             response.raise_for_status()
 
-            raw_reply = response.json()["message"]["content"]
+            raw_reply = self.clean_reply(response.json()["message"]["content"])
 
             # Parse and execute embedded actions if present
             final_reply, executed_actions = self._execute_embedded_actions(raw_reply)

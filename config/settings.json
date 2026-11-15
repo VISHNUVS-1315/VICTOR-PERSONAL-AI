@@ -14,7 +14,7 @@
     "voice": {
         "wake_word": "Victor",
         "wake_word_enabled": true,
-        "wake_word_sensitivity": 0.7,
+        "wake_word_sensitivity": 0.85,
         "mic_index": null,
         "sample_rate": 16000,
         "stt_model": "small",
@@ -29,7 +29,9 @@
         "tts_voice": "david",
         "tts_rate": 170,
         "tts_volume": 1.0,
-        "audio_feedback": true
+        "audio_feedback": false,
+        "listen_timeout": 8.0,
+        "idle_unload_seconds": 300
     },
     "ui": {
         "fullscreen": false,
@@ -38,12 +40,19 @@
         "bg_video_enabled": false,
         "bg_video_fps": 18,
         "hud_glow_intensity": 0.8,
-        "sound_effects": true
+        "sound_effects": false,
+        "hud_auto_hide_seconds": 30
     },
     "telemetry": {
         "interval_low_power": 3.5,
         "interval_balanced": 2.0,
         "interval_performance": 1.0
+    },
+    "tray": {
+        "voice_replies": true,
+        "hotkey_talk": "ctrl+alt+v",
+        "hotkey_type": "ctrl+alt+t",
+        "hotkey_stop": "ctrl+alt+x"
     },
     "security": {
         "require_confirmation_for_destructive": true,
@@ -64,11 +73,5 @@
             "discord"
         ],
         "allowed_scripts_dir": "C:\\VICTOR\\scripts"
-    },
-    "tray": {
-        "voice_replies": true,
-        "hotkey_talk": "ctrl+alt+v",
-        "hotkey_type": "ctrl+alt+t",
-        "hotkey_stop": "ctrl+alt+x"
     }
 }

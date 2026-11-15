@@ -1,13 +1,16 @@
 """
 VICTOR AI - MASTER LAUNCHER
 Usage:
-    python run_victor.py             # Launches Native JARVIS Desktop UI (PySide6 / QML)
-    python run_victor.py --voice     # Launches Hands-Free Voice Chat Console
-    python run_victor.py --tray      # Launches tray-resident assistant (hotkeys + wake word, no window)
+    python run_victor.py             # Launches the animated VICTOR HUD (PySide6 / QML)
+    python run_victor.py --hud       # Same as default: animated HUD with continuous voice
+    python run_victor.py --classic   # Legacy multi-panel command center UI
+    python run_victor.py --tray      # Legacy tray-only mode (no window)
+    python run_victor.py --voice     # Hands-free voice console in the terminal
+    python run_victor.py --capture DIR  # Render HUD screenshots of each state (QA)
     python run_victor.py --train     # Re-trains custom 'Victor' wake-word model
     python run_victor.py --test      # Runs comprehensive test suite
     python run_victor.py --web       # Opens Web Browser Interface fallback
-    python run_victor.py --install-autostart    # Start tray mode with Windows
+    python run_victor.py --install-autostart    # Start VICTOR HUD with Windows
     python run_victor.py --remove-autostart     # Stop starting automatically
 """
 
@@ -56,6 +59,30 @@ def launch_voice_chat():
             break
 
 
+def launch_hud():
+    """Primary experience: animated HUD with continuous voice conversation."""
+    print("=" * 65)
+    print("   [+] Launching VICTOR HUD...")
+    print("   [*] Ctrl+Alt+V talk | Ctrl+Alt+X interrupt | Esc interrupt")
+    print("=" * 65)
+    from src.ui.hud import main as hud_main
+
+    capture = ""
+    if "--capture" in sys.argv:
+        idx = sys.argv.index("--capture")
+        if idx + 1 < len(sys.argv):
+            capture = sys.argv[idx + 1]
+    return hud_main(capture_path=capture)
+
+
+def launch_classic():
+    print("=" * 65)
+    print("   [+] Launching VICTOR Classic Command Center (legacy UI)...")
+    print("=" * 65)
+    from src.ui.main_legacy import main as classic_main
+    classic_main()
+
+
 def launch_tray():
     print("=" * 65)
     print("   [+] Launching VICTOR Tray Assistant (no window)...")
@@ -91,8 +118,12 @@ if __name__ == "__main__":
 
     if "--voice" in args or "-v" in args:
         launch_voice_chat()
+    elif "--classic" in args:
+        launch_classic()
     elif "--tray" in args or "-r" in args:
         raise SystemExit(launch_tray() or 0)
+    elif "--hud" in args or "-u" in args:
+        raise SystemExit(launch_hud() or 0)
     elif "--install-autostart" in args:
         from scripts.install_autostart import install
         print(f"[+] Autostart installed: {install()}")
@@ -106,9 +137,4 @@ if __name__ == "__main__":
     elif "--web" in args or "-w" in args or "web" in args:
         launch_web_ui()
     else:
-        try:
-            launch_desktop_ui()
-        except ImportError as e:
-            print(f"PySide6 desktop launch encountered an issue: {e}")
-            print("Falling back to opening the VICTOR Web Interface...")
-            launch_web_ui()
+        raise SystemExit(launch_hud() or 0)

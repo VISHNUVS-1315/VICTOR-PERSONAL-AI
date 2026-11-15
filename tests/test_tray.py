@@ -54,10 +54,10 @@ class TestAutostartHelpers(unittest.TestCase):
         self.assertTrue(str(path).lower().endswith("victor tray.vbs"))
         self.assertIn("start menu", str(path).lower())
 
-    def test_launcher_runs_tray_mode_hidden(self):
+    def test_launcher_runs_hud_mode_hidden(self):
         from scripts.install_autostart import _launcher_script
         script = _launcher_script()
-        self.assertIn("--tray", script)
+        self.assertIn("--hud", script)
         self.assertIn("pythonw.exe", script)
         self.assertIn(", 0, False", script)   # hidden window, do not wait
 

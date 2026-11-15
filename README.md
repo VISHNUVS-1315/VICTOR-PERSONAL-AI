@@ -181,19 +181,27 @@ Double click **`run_ui.bat`** or execute via terminal:
 ```cmd
 .\.venv\Scripts\python.exe run_victor.py
 ```
+This opens the animated HUD. The legacy multi-panel command center is still
+available with `run_victor.py --classic`, and the tray-only mode with `--tray`.
 
-### Step 3: Hands-Free Voice Operation
-1. Victor starts in **STANDBY** mode with a gentle cyan pulsing core.
-2. Say: **"Victor"**
-3. Victor will chime and transition to **LISTENING** (vibrant green).
-4. Speak your command:
+### Step 3: Talk to VICTOR
+1. The HUD opens with a slow cyan core (IDLE).
+2. Press **Ctrl + Alt + V** or say **"Victor"**.
+3. The core turns green and the waveform ring follows your voice (LISTENING).
+4. Speak normally:
    - *"Open Visual Studio Code"*
-   - *"Take a screenshot"*
    - *"What is my CPU and GPU status?"*
-   - *"Set system volume to 60 percent"*
-   - *"Remember that I am designing an autonomous drone navigation system"*
-   - *"What do you remember about my projects?"*
-5. Victor executes the command, speaks the response through natural TTS, and returns to standby!
+   - *"Remember that I am designing a drone navigation system"*
+5. The core turns amber while VICTOR thinks, blue while it speaks, then it
+   returns to LISTENING so you can keep the conversation going without pressing
+   anything again.
+6. Press **Esc** or **Ctrl + Alt + X** to interrupt speech, or click the core.
+7. Silence for 8 seconds ends the turn; the HUD hides itself after 30 seconds of
+   inactivity.
+
+Every turn is transcribed on screen (YOU / VICTOR) and VICTOR speaks the answer.
+There are no chimes, no notification popups, and only one VICTOR instance can
+run: a second launch simply brings the running HUD forward.
 
 ### Step 4: Tray Mode — the no-window daily driver
 
@@ -237,33 +245,57 @@ Notes:
 
 ## 5. Keyboard Shortcuts & Controls
 
-| Shortcut / Button | Function |
+HUD (default interface):
+
+| Shortcut / Action | Function |
 |---|---|
-| **F11** | Toggle Full-Screen Holographic HUD |
-| **Escape** | Stop Victor speaking immediately / Exit Full-Screen |
-| **Enter** | Send text command from prompt input bar |
-| **⚡ LOW POWER** | Switch to ultra-low CPU/GPU standby mode |
-| **⚖ BALANCED** | Switch to moderate visual performance mode |
-| **🚀 PERF** | Switch to full visual effects and animations |
-| **🎙 Button** | Push-to-talk manual microphone activation |
-| **🌙 Button** | Toggle standby sleep mode |
-| **⏹ STOP** | Immediate speech interruption |
+| **Ctrl + Alt + V** | Open the HUD and start listening (or interrupt if it is speaking) |
+| **Ctrl + Alt + X** | Interrupt speech / cancel listening |
+| **Escape** | Same as Ctrl + Alt + X |
+| **Click the core** | Start talking, or interrupt the current answer |
+| **CLOSE** | Quit VICTOR |
+| **CLEAR** | Clear the on-screen transcript |
+| **"Victor"** (wake word) | Open the HUD and start listening |
+
+Legacy command center (`--classic`): **F11** full screen, **Escape** stop
+speaking, **Enter** send typed command, power-mode and stop buttons in the
+header. Tray mode (`--tray`): same hotkeys plus a right-click menu.
 
 ---
 
-## 6. Resource Optimization Benchmarks
+## 6. Resource Optimisation Benchmarks
 
-Measured on HP Victus 15 (Intel Core i7-13620H 16 Threads, 24GB DDR5, NVIDIA RTX 5060):
+Measured on this machine (Intel Core i7-13620H, 24 GB DDR5, NVIDIA RTX 5060,
+Windows 11) with `scripts/measure_resources.py` and `scripts/bench_hud.py`.
+Reproduce with:
 
-| Metric | Before Optimization | After Optimization (Low Power Mode) | Improvement |
+```cmd
+.\.venv\Scripts\python.exe scripts\bench_hud.py --seconds 20
+.\.venv\Scripts\python.exe scripts\bench_hud.py --seconds 20 --hidden
+.\.venv\Scripts\python.exe scripts\measure_resources.py --label "live HUD" --seconds 20
+```
+
+| Metric | Legacy command center (`--classic`) | New HUD | Notes |
 |---|---|---|---|
-| **Standby CPU Usage** | ~57.8% (unthrottled loops & `nvidia-smi`) | **0.0% – 0.5%** | **~99% reduction** |
-| **Telemetry Overhead** | Spawning subprocess every 1.5s | **Cached (1.06 ms lookup)** | **Zero CPU spikes** |
-| **Background Thread Count** | 41+ active threads | **10–11 threads** | **~73% thread reduction** |
-| **Standby RAM Footprint** | ~806 MB | **~208 MB** (Whisper loaded on-demand) | **~74% memory reduction** |
-| **Idle GPU VRAM** | 6.6 GB continuously held | **0 MB idle** (Ollama unloads model when idle) | **Full VRAM freed for games/apps** |
-| **Speech Pause Tolerance** | 500ms fixed cutoff | **1.0s adaptive silence endpoint** | **No mid-sentence cutoffs** |
-| **Concurrency Duplication** | Multiple responses possible | **Guaranteed 1 response per turn** | **Zero duplicate responses** |
+| **RAM, visible and idle** | 919 MB peak | **307 MB** | working set, single process |
+| **CPU, visible and animating** | 194.8% of all cores (12.2% of machine) | **10.5%** (0.7%) | no 60 fps animations |
+| **CPU, HUD hidden** | n/a | **4.5%** (0.3%) | animation timer stops with the window |
+| **CPU, listening / speaking animation** | n/a | **13.5% / 13.7%** (0.8% / 0.9%) | waveform driven at 25 fps |
+| **Wake word listener** | same engine | **~16% of one core** (~1% of machine) | 80 ms ONNX frames, 1 thread |
+| **Whisper while a turn is active** | same engine | **+~500 MB**, released after 5 min idle | `voice.idle_unload_seconds` |
+| **GPU** | 0% | **0% idle** | HUD renders on the Intel iGPU; RTX stays free for Ollama |
+| **Speech-to-text, 2 s clip** | ~19 s per turn | **~9.5 s** | explicit CTranslate2 threads + cached language |
+| **LLM reply, warm model** | n/a | **~5-13 s** | `qwen3.5:9b` on GPU, `keep_alive=30m` |
+| **Text to speech** | same engine | **real time (~180 wpm)** | blocks until audio finishes |
+
+Notes:
+- The wake word never sees VICTOR's own voice: the listener is paused while the
+  microphone is held and while TTS is speaking.
+- `keep_alive: "30m"` keeps the 9B model resident on the GPU between turns, so a
+  conversation does not pay the ~6.6 GB reload cost.
+- Speech-to-text is the slowest part on this CPU. It can be cut to ~3 s by
+  setting `voice.stt_model` to `"base.en"` in `config/settings.json`, at the cost
+  of Tamil/Tanglish accuracy.
 
 ---
 
