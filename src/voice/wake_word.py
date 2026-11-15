@@ -132,6 +132,11 @@ class WakeWordListener:
 
         print(f"[+] Victor is listening for 'Victor' in background (Threshold: {self.sensitivity})...")
 
+        # ONNX buffers start zero-padded, which produces one loud false peak in the
+        # first frames. Feed audio through untouched, then reset the feature buffers.
+        warmup_frames = max(1, int(2.0 * SAMPLE_RATE / BLOCK_SIZE))  # ~2 s
+        frames_seen = 0
+
         try:
             with sd.InputStream(
                 samplerate=SAMPLE_RATE,
@@ -154,7 +159,25 @@ class WakeWordListener:
 
                     audio = np.squeeze(audio)
 
-                    # Predict wake word score
+                    # Warm-up: feed audio to the model but ignore its verdict
+                    if frames_seen <= warmup_frames:
+                        frames_seen += 1
+                        try:
+                            self._model.predict(audio)
+                        except Exception:
+                            pass
+                        if frames_seen > warmup_frames:
+                            try:
+                                self._model.reset()
+                            except Exception:
+                                pass
+                            print("[+] Wake-word warm-up complete. Listening...")
+                        continue
+
+                    # Predict wake word score.
+                    # Note: openWakeWord's `patience` option misbehaves with custom
+                    # single-model ONNX files (it zeroes real detections), so score the
+                    # raw frame and de-bounce with _cooldown_seconds instead.
                     try:
                         prediction = self._model.predict(audio)
                         score = prediction.get("victor", 0.0)

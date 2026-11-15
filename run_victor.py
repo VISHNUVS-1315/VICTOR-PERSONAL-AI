@@ -3,9 +3,12 @@ VICTOR AI - MASTER LAUNCHER
 Usage:
     python run_victor.py             # Launches Native JARVIS Desktop UI (PySide6 / QML)
     python run_victor.py --voice     # Launches Hands-Free Voice Chat Console
+    python run_victor.py --tray      # Launches tray-resident assistant (hotkeys + wake word, no window)
     python run_victor.py --train     # Re-trains custom 'Victor' wake-word model
     python run_victor.py --test      # Runs comprehensive test suite
     python run_victor.py --web       # Opens Web Browser Interface fallback
+    python run_victor.py --install-autostart    # Start tray mode with Windows
+    python run_victor.py --remove-autostart     # Stop starting automatically
 """
 
 import sys
@@ -53,6 +56,15 @@ def launch_voice_chat():
             break
 
 
+def launch_tray():
+    print("=" * 65)
+    print("   [+] Launching VICTOR Tray Assistant (no window)...")
+    print("   [*] Ctrl+Alt+V talk | Ctrl+Alt+T type | Ctrl+Alt+X stop")
+    print("=" * 65)
+    from src.ui.tray import run_tray
+    return run_tray(selftest=("--selftest" in sys.argv), verbose=("--verbose" in sys.argv))
+
+
 def launch_web_ui():
     web_file = ROOT_DIR / "src" / "ui" / "web" / "index.html"
     print("=" * 65)
@@ -79,6 +91,14 @@ if __name__ == "__main__":
 
     if "--voice" in args or "-v" in args:
         launch_voice_chat()
+    elif "--tray" in args or "-r" in args:
+        raise SystemExit(launch_tray() or 0)
+    elif "--install-autostart" in args:
+        from scripts.install_autostart import install
+        print(f"[+] Autostart installed: {install()}")
+    elif "--remove-autostart" in args:
+        from scripts.install_autostart import uninstall
+        print(f"[+] Autostart removed: {uninstall()}")
     elif "--train" in args:
         run_training()
     elif "--test" in args or "-t" in args:

@@ -130,7 +130,8 @@ C:\VICTOR
 │   ├── screenshots/          # Screen captures saved by Victor
 │   └── victor_memory.db      # SQLite persistent memory & audit store
 ├── scripts/
-│   └── train_victor_model.py # Automated synthetic training pipeline for 'Victor'
+│   ├── train_victor_model.py # Automated synthetic training pipeline for 'Victor'
+│   └── install_autostart.py  # Add/remove the tray launcher from Windows Startup
 ├── src/
 │   ├── actions/
 │   │   └── computer_control.py # Whitelist automation, pycaw volume, screenshots
@@ -140,6 +141,7 @@ C:\VICTOR
 │   │   └── settings.py       # Configuration manager singleton
 │   ├── core/
 │   │   ├── audio_effects.py  # Sci-Fi sound effect synthesizer
+│   │   ├── hotkey.py         # Win32 global hotkeys (RegisterHotKey)
 │   │   └── state.py          # Central state machine (IDLE, LISTENING, etc.)
 │   ├── memory/
 │   │   └── store.py          # SQLite database wrapper with migration & security
@@ -150,6 +152,7 @@ C:\VICTOR
 │   │   │   └── Main.qml      # Full-Screen JARVIS Holographic HUD
 │   │   ├── web/
 │   │   │   └── index.html    # Standalone browser UI fallback
+│   │   ├── tray.py           # No-window tray assistant (hotkeys + wake word)
 │   │   └── main.py           # PySide6 master application backend
 │   └── voice/
 │       ├── stt.py            # Faster-Whisper INT8 speech-to-text
@@ -191,6 +194,44 @@ Double click **`run_ui.bat`** or execute via terminal:
    - *"Remember that I am designing an autonomous drone navigation system"*
    - *"What do you remember about my projects?"*
 5. Victor executes the command, speaks the response through natural TTS, and returns to standby!
+
+### Step 4: Tray Mode — the no-window daily driver
+
+For everyday use you do not need the full HUD. Tray mode keeps VICTOR resident
+in the notification area with global hotkeys, and speaks everything back:
+
+```cmd
+.\.venv\Scripts\python.exe run_victor.py --tray
+```
+
+| Control | Action |
+|---|---|
+| **Ctrl + Alt + V** | Talk now (same as saying "Victor") |
+| **Ctrl + Alt + T** | Type a command instead of speaking |
+| **Ctrl + Alt + X** | Stop speaking / cancel the current turn |
+| Left click tray icon | Talk now |
+| Right click tray icon | Menu: wake word, spoken replies, power mode, HUD, log, autostart, quit |
+
+Right-click menu extras: **Spoken replies** toggle, **Power mode** (low/balanced/
+performance), **Open full HUD**, **Open log** (`logs/tray.log`), and **Start with
+Windows** (writes a launcher to your Startup folder — no admin rights needed).
+
+Start automatically at login from the command line instead:
+
+```cmd
+.\.venv\Scripts\python.exe run_victor.py --install-autostart
+.\.venv\Scripts\python.exe run_victor.py --remove-autostart
+```
+
+Notes:
+- Only one tray instance can run; a second launch exits silently (named mutex).
+- Startup is quiet: the tray icon appears immediately, Whisper is lazy-loaded on
+  the first spoken command, so idle RAM stays low.
+- The wake-word listener discards its first ~2 s (ONNX buffer warm-up) and then
+  de-bounces for 2 s, which removes the startup false trigger.
+- Wake word too eager or too deaf? Tune `voice.wake_word_sensitivity` in
+  `config/settings.json` (0.7 default, raise toward 0.85 in a noisy room).
+  Hotkeys are unaffected by this setting.
 
 ---
 

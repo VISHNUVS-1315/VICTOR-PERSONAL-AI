@@ -14,7 +14,7 @@
     "voice": {
         "wake_word": "Victor",
         "wake_word_enabled": true,
-        "wake_word_sensitivity": 0.5,
+        "wake_word_sensitivity": 0.7,
         "mic_index": null,
         "sample_rate": 16000,
         "stt_model": "small",
@@ -64,5 +64,11 @@
             "discord"
         ],
         "allowed_scripts_dir": "C:\\VICTOR\\scripts"
+    },
+    "tray": {
+        "voice_replies": true,
+        "hotkey_talk": "ctrl+alt+v",
+        "hotkey_type": "ctrl+alt+t",
+        "hotkey_stop": "ctrl+alt+x"
     }
 }

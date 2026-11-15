@@ -33,7 +33,7 @@ DEFAULT_SETTINGS = {
     "voice": {
         "wake_word": "Victor",
         "wake_word_enabled": True,
-        "wake_word_sensitivity": 0.5,
+        "wake_word_sensitivity": 0.7,
         "mic_index": None,  # None means system default
         "sample_rate": 16000,
         "stt_model": "small",
@@ -63,6 +63,12 @@ DEFAULT_SETTINGS = {
         "interval_low_power": 3.5,
         "interval_balanced": 2.0,
         "interval_performance": 1.0
+    },
+    "tray": {
+        "voice_replies": True,
+        "hotkey_talk": "ctrl+alt+v",
+        "hotkey_type": "ctrl+alt+t",
+        "hotkey_stop": "ctrl+alt+x"
     },
     "security": {
         "require_confirmation_for_destructive": True,
